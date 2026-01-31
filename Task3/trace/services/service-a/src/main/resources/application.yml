@@ -1,0 +1,30 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: service-a
+
+# Конфигурация для вызова Service-B
+service:
+  b:
+    url: http://service-b:8080
+
+# Конфигурация OpenTelemetry
+management:
+  tracing:
+    sampling:
+      probability: 1.0
+
+opentelemetry:
+  traces:
+    exporter: otlp
+  otlp:
+    endpoint: http://jaeger-all-in-one-collector.observability.svc.cluster.local:4317
+    timeout: 10000
+
+logging:
+  level:
+    io.opentelemetry: DEBUG
+    org.springframework.web: INFO
+    com.example.servicea: DEBUG
