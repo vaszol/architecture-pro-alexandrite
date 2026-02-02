@@ -1,0 +1,24 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: service-b
+
+# Конфигурация OpenTelemetry для трассировки
+management:
+  tracing:
+    sampling:
+      probability: 1.0 # Всегда собирать трейсы (для отладки)
+
+opentelemetry:
+  traces:
+    exporter: otlp
+  otlp:
+    endpoint: http://jaeger-all-in-one-collector.observability.svc.cluster.local:4317
+    timeout: 10000
+
+logging:
+  level:
+    io.opentelemetry: DEBUG
+    org.springframework.web: INFO

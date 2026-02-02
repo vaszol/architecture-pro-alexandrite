@@ -1,0 +1,46 @@
+@startuml
+title MES — Sequence: чтение списка заказов и запись об изменении статуса заказа
+
+actor Operator as Op
+participant "MES UI (React)" as UI
+participant "MES API (.NET)" as API
+participant "Redis Cache" as Cache
+queue "RabbitMQ" as MQ
+participant "Cache Updater" as Updater
+database "MES DB (PostgreSQL)" as DB
+
+== чтение списка заказов ==
+Op -> UI: Open dashboard (status=NEW, page=1)
+UI -> API: GET /orders?status=NEW&page=1&pageSize={Page_Size}
+activate API
+API -> Cache: GET orders:NEW:p1:{Page_Size}
+alt Cache HIT
+  Cache --> API: PageDTO[] (Age<=5s)
+  API --> UI: 200 OK + data\n(Cache-Control: max-age=5, stale-while-revalidate=30)
+  deactivate API
+else Cache MISS
+  Cache --> API: nil
+  API -> API: Single-flight lock sf:orders:NEW:p1:{Page_Size} (5s)
+  API -> DB: SELECT ... WHERE status=NEW ORDER BY updated_at DESC LIMIT {Page_Size}
+  DB --> API: rows
+  API -> Cache: SET orders:NEW:p1:{Page_Size} (TTL=5s)\nZADD z:orders:NEW updated_at order_id
+  API --> UI: 200 OK + data
+  deactivate API
+end
+note over API,Cache
+Cache-Aside: TTL 5–10s
+end note
+
+== запись об изменении статуса заказа ==
+Op -> UI: Click "Взять в обработку" (order_id=123)\nfrom NEW -> MANUFACTURING_STARTED
+UI -> API: POST /orders/123/claim
+activate API
+API -> Cache: Acquire lock lock:order:123 (5s)
+API -> DB: UPDATE orders SET status=MANUFACTURING_STARTED\nWHERE id=123 AND status=NEW
+DB --> API: OK
+API -> MQ: Publish OrderStatusChanged{123, NEW->MANUFACTURING_STARTED, ts}
+API -> Cache: ZREM z:orders:NEW 123\nZADD z:orders:MANUFACTURING_STARTED ts 123
+API --> UI: 200 OK
+deactivate API
+
+@enduml
